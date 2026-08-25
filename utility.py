@@ -506,7 +506,7 @@ def get_radar_data(snr_dB, H):
             for s in snr_dB_arr:
                 idx = np.where(snr_dB_list == s)[0]
                 R_s = np.squeeze(R0_4D[:, :, 0, idx])   # (Nt, Nt)
-                R_list.append(R_s[None, :, :])           # (1, Nt, Nt)
+                R_list.append(R_s)                       # (Nt, Nt)
             R_stack = np.stack(R_list, axis=0)           # (B, Nt, Nt)
             R_array = R_stack[None, :, :, :]             # (1, B, Nt, Nt)
         else:
