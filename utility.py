@@ -22,6 +22,17 @@ def _randn_complex(shape, device, real_dtype):
     return real + 1j * imag
 
 
+def _pt_vec(Pt, B, ref):
+    """Return a per-sample transmit-power vector of shape (B,).
+
+    Pt can be a scalar (float / int / 0-d tensor) or a 1-D tensor/array of
+    shape (B,).  ``ref`` is a tensor used to infer device and dtype.
+    """
+    if torch.is_tensor(Pt) and Pt.dim() >= 1:
+        return Pt.to(device=ref.device, dtype=ref.dtype)
+    return torch.full((B,), float(Pt), device=ref.device, dtype=ref.dtype)
+
+
 # ==================================== initialize F and W ===========================
 def initialize(H, R, Pt, normalization, pc=False):
     device = H.device
@@ -106,8 +117,9 @@ def initialize(H, R, Pt, normalization, pc=False):
         F, W = normalize(F, W, H, Pt)
     else:
         # only normalize W for power constraint
-        norm2_FW = sum(torch.linalg.matrix_norm(F @ W, ord='fro') ** 2)
-        W = (torch.sqrt(Pt / norm2_FW.reshape(len(H[0]), 1, 1))) * W
+        norm2_FW = sum(torch.linalg.matrix_norm(F @ W, ord='fro') ** 2)  # (B,)
+        Pt_vec = _pt_vec(Pt, len(H[0]), norm2_FW)
+        W = (torch.sqrt(Pt_vec / norm2_FW).view(1, len(H[0]), 1, 1)) * W
     # rate_0 = get_sum_rate(H, F, W)
     rate_init = torch.zeros(1, len(H[0]), device=device, dtype=real_dtype)
     beam_error_init = torch.zeros(1, len(H[0]), device=device, dtype=real_dtype)
@@ -204,8 +216,9 @@ def initialize_schemes(H, R, Pt, init_method):
         W = FQ / (torch.linalg.matrix_norm(FQ, ord='fro').reshape(len(H[0]), 1, 1))
 
     # only normalize W for power constraint
-    norm2_FW = sum(torch.linalg.matrix_norm(F @ W, ord='fro') ** 2)
-    W = (torch.sqrt(Pt / norm2_FW.reshape(len(H[0]), 1, 1))) * W
+    norm2_FW = sum(torch.linalg.matrix_norm(F @ W, ord='fro') ** 2)  # (B,)
+    Pt_vec = _pt_vec(Pt, len(H[0]), norm2_FW)
+    W = (torch.sqrt(Pt_vec / norm2_FW).view(1, len(H[0]), 1, 1)) * W
 
     # rate_0 = get_sum_rate(H, F, W)
     rate_init = torch.zeros(1, len(H[0]), device=device, dtype=real_dtype)
@@ -263,11 +276,6 @@ def get_sum_rate(H, F, W, Pt):
     sum_power = sum(torch.linalg.matrix_norm(F @ W, ord='fro') ** 2) / K
     if torch.any(sum_power > power_high_threshold):
         sys.stderr.write('Error: power constraint violated\n')
-    # power_high_threshold = Pt + 10 ** (-0)
-    # power_low_threshold = Pt - 10 ** (-0)
-    # power_all = torch.linalg.matrix_norm(F @ W, ord='fro') ** 2
-    # if torch.any(power_all > power_high_threshold):
-    #     sys.stderr.write('Error: power constraint violated\n')
 
     F_H = torch.transpose(F, 2, 3).conj()
     W_H = torch.transpose(W, 2, 3).conj()
@@ -337,9 +345,10 @@ def get_trace(A):
 # ======== normalization to meet constant modulus and power constraint ===========================
 def normalize(F, W, H, Pt):
     F = F / (torch.abs(F) + 1e-12)
-    sum_norm_BB = sum(torch.linalg.matrix_norm(F @ W, ord='fro') ** 2)
+    sum_norm_BB = sum(torch.linalg.matrix_norm(F @ W, ord='fro') ** 2)  # (B,)
     sum_norm_BB = torch.clamp(sum_norm_BB, min=1e-6)
-    normalize_factor = torch.sqrt(K * Pt / sum_norm_BB).reshape(len(H[0]), 1, 1)
+    Pt_vec = _pt_vec(Pt, len(H[0]), sum_norm_BB)
+    normalize_factor = torch.sqrt(K * Pt_vec / sum_norm_BB).view(1, len(H[0]), 1, 1)
     W = normalize_factor * W
     # sum_power = sum(torch.linalg.matrix_norm(F @ W, ord='fro') ** 2)/K
     # print(sum_power)
@@ -349,9 +358,10 @@ def normalize(F, W, H, Pt):
 
 # ========================= normalize F based on power constraint =====================
 def normalize_power(F, W, H, Pt):
-    sum_norm_power = sum(torch.linalg.matrix_norm(F @ W, ord='fro') ** 2)
+    sum_norm_power = sum(torch.linalg.matrix_norm(F @ W, ord='fro') ** 2)  # (B,)
     sum_norm_power = torch.clamp(sum_norm_power, min=1e-6)
-    normalize_factor = torch.sqrt(Pt / sum_norm_power).reshape(len(H[0]), 1, 1)
+    Pt_vec = _pt_vec(Pt, len(H[0]), sum_norm_power)
+    normalize_factor = torch.sqrt(Pt_vec / sum_norm_power).view(1, len(H[0]), 1, 1)
     F = normalize_factor * F
     return F
 
