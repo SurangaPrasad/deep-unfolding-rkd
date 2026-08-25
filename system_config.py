@@ -63,7 +63,7 @@ print(system_info)
 # ////////////////////////////////////////////// MODEL PARAMS //////////////////////////////////////////////
 train_size = 112 * 4 # size of training set
 test_size = 100      # size of testing set
-batch_size = len(snr_dB_list) * 4
+batch_size = len(snr_dB_list) * 8
 n_epoch = 30 # number of training epochs
 learning_rate = 0.001 # learning rate
 
