@@ -45,6 +45,7 @@ def run_UPGA(step_size_UPGA, n_inner, run_id):
             optimizer.step()
 
             batch_losses.append(loss.item())
+            print(f"Epoch [{i_epoch+1}/{n_epoch}], Batch [{i_batch//batch_size + 1}/{len(H_train[0])//batch_size}], Loss: {loss.item():.4f}")
 
         avg_loss = sum(batch_losses) / len(batch_losses)
         epoch_losses.append(avg_loss)
