@@ -72,6 +72,9 @@ n_iter_inner_J5 = 5     # Number of inner iterations (J = 5)
 n_iter_inner_J3 = 3 
 n_iter_inner_J20 = 20   # Number of inner iterations (J = 20)
 n_iter_inner_J10 = 10
+
+# Paper hyperparameters: student uses I=60 outer layers (teacher I=120)
+I_student = 60
 # ============================ TUNING PARAMETERS ===========================
 WEIGHT_F_RAD = OMEGA  # fixed
 WEIGHT_W_RAD = OMEGA / Nt * K
@@ -90,8 +93,11 @@ step_size_UPGA_J5_I120=torch.full([n_iter_inner_J5, 120, K + 1], step_size_fixed
 
 step_size_UPGA_J3_I60=torch.full([n_iter_inner_J3, 60, K + 1], step_size_fixed, device=device, requires_grad=True)
 step_size_UPGA_J10_PC = torch.full([n_iter_inner_J10, n_iter_outer, K + 1], step_size_fixed, device=device, requires_grad=True)
-step_size_UPGA_J10_I60 = torch.full([n_iter_inner_J10, 60, K + 1], step_size_fixed, requires_grad=True)
+step_size_UPGA_J10_I60 = torch.full([n_iter_inner_J10, I_student, K + 1], step_size_fixed, requires_grad=True)
 step_size_student_J10_80 = torch.full([n_iter_inner_J10, 80, K + 1], step_size_fixed, requires_grad=True)
+# Teacher / student step sizes for TGI+LRD
+step_size_teacher = step_size_UPGA_J20  # [20, 120, K+1]
+step_size_student = torch.full([n_iter_inner_J10, I_student, K + 1], step_size_fixed, device=device, requires_grad=True)
 
 # ////////////////////////////////////////////// SAVING RESULTS AND DATA //////////////////////////////////////////////
 directory_data = "./dataset/" + system_config + "/"
@@ -120,6 +126,9 @@ model_file_name_UPGA_J10 = directory_model + 'UPGA_J10_320.pth'
 model_file_name_UPGA_J20 = directory_model + 'UPGA_J20_320.pth'
 model_file_name_UPGA_J10_PC = directory_model + 'UPGA_J10_PC.pth'
 model_file_name_UPGA_J10_PC_omega03 = directory_model03 + 'UPGA_J10_PC.pth'
+# Teacher / Student model file names (paper: teacher J20/I120, student J10/I60)
+model_file_name_teacher = directory_model + 'UPGA_J20_teacher.pth'
+model_file_name_student = directory_model + 'UPGA_J10_student_TGI1_LRD1.pth'
 # To save result figures
 directory_result = "./sim_results/" + system_config + "/"
 if not os.path.exists(directory_result):
@@ -131,6 +140,8 @@ label_PGA_J10 = 'PGA ' + '$(J = ' + str(n_iter_inner_J10) + ')$'
 label_UPGA_J1 = r'Unfolded PGA ' + '$(J = 1)$'
 label_UPGA_J10 = r'Unfolded PGA ' + '$(J = ' + str(n_iter_inner_J10) + ')$'
 label_UPGA_J20 = r'Unfolded PGA ' + '$(J = ' + str(n_iter_inner_J20) + ')$'
+label_student = r'Student ' + '$(J = ' + str(n_iter_inner_J10) + ', I = ' + str(I_student) + ')$'
+label_student_LRD = r'Student + LRD'
 label_UPGA_J10_PC = r'Unfolded PGA ' + '$(J = ' + str(n_iter_inner_J10) + ', PC)$'
 label_conv_PGA_J10_PC = 'Conventional PGA ' + '$(J = ' + str(n_iter_inner_J10) + ', PC)$'
 label_ZF = 'ZF (digital, comm. only)'

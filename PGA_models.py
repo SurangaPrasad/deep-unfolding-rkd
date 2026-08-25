@@ -62,6 +62,29 @@ def project_unit_modulus(F, eps=1e-12, active_mask=None):
 
     return projected
 
+
+# ==================================== Teacher-Guided Initialization (TGI) ===========================
+def tgi_compress_step_sizes(teacher_step, J_S, I_S, K_plus_1):
+    """Compress teacher step sizes to initialize a shallower student (TGI).
+
+    Teacher step_size shape: [J_T, I_T, K+1]  (inner, outer, params)
+    Student step_size shape: [J_S, I_S, K+1]
+
+    Inner reduction factor r = J_T / J_S: average each group of r consecutive
+    teacher inner step sizes (Eq. 10 in the paper).
+    Outer reduction factor r' = I_T / I_S: average each group of r' consecutive
+    teacher outer step sizes (Eq. 11 in the paper).
+    """
+    J_T, I_T, _ = teacher_step.shape
+    r = J_T // J_S
+    rp = I_T // I_S
+
+    # Compress inner dimension: [J_T, I_T, K+1] -> [J_S, I_T, K+1]
+    inner = teacher_step.view(J_S, r, I_T, K_plus_1).mean(dim=1)
+    # Compress outer dimension: [J_S, I_T, K+1] -> [J_S, I_S, K+1]
+    outer = inner.view(J_S, I_S, rp, K_plus_1).mean(dim=2)
+    return outer.detach().clone()
+
 # /////////////////////////////////////////////////////////////////////////////////////////
 #                             PGA MODEL CLASSES
 # /////////////////////////////////////////////////////////////////////////////////////////
@@ -263,6 +286,49 @@ class PGA_Unfold_J10(nn.Module):
 
         return torch.transpose(rates, 0, 1), torch.transpose(taus, 0, 1), F, W
 
+    # =========== Projection Gradient Ascent execution with LRD window collection ===================
+    def execute_PGA_with_windows(self, H, R, Pt, n_iter_outer, n_iter_inner, L):
+        """Run PGA and collect (F, W) iterates for the early and late windows.
+
+        Returns rates, taus, F, W, FW_early, FW_late.
+        FW_early: list of L (F, W) tuples from outer iters 0..L-1.
+        FW_late : list of L (F, W) tuples from outer iters I-L..I-1.
+        """
+        rate_init, tau_init, F, W = initialize(H, R, Pt, initial_normalization)
+        rate_over_iters = torch.zeros(n_iter_outer, len(H[0]), device=H.device)
+        tau_over_iters = torch.zeros(n_iter_outer, len(H[0]), device=H.device)
+
+        FW_early, FW_late = [], []
+
+        for ii in range(n_iter_outer):
+            F = checkpoint(
+                analog_block_pga,
+                F, W, H, R, self.step_size, ii, Pt, n_iter_inner, use_reentrant=False
+            )
+            F = project_unit_modulus(F)
+
+            W_new = W.clone().detach()
+            grad_W_k_com = get_grad_W_com(H, F, W)
+            grad_W_k_rad = get_grad_W_rad(F, W, R)
+            for k in range(K):
+                delta_W_com = self.step_size[0][ii][k + 1] * grad_W_k_com[k]
+                delta_W_rad = self.step_size[0][ii][k + 1] * grad_W_k_rad[k]
+                W_new[k] = W[k].clone().detach() + delta_W_com * WEIGHT_W_COM - delta_W_rad * WEIGHT_W_RAD
+            F, W = normalize(F, W_new, H, Pt)
+
+            if ii < L:
+                FW_early.append((F.clone(), W.detach().clone()))
+            if ii >= n_iter_outer - L:
+                FW_late.append((F.clone(), W.detach().clone()))
+
+            rate_over_iters[ii] = get_sum_rate(H, F, W, Pt)
+            tau_over_iters[ii] = get_beam_error(H, F, W, R, Pt)
+
+        rates = torch.cat([rate_init, rate_over_iters], dim=0)
+        taus = torch.cat([tau_init, tau_over_iters], dim=0)
+        return (torch.transpose(rates, 0, 1), torch.transpose(taus, 0, 1),
+                F, W, FW_early, FW_late)
+
 # ============================================== Proposed PGA model=============================
 class PGA_Unfold_J20(nn.Module):
 
@@ -305,6 +371,49 @@ class PGA_Unfold_J20(nn.Module):
             taus = torch.cat([tau_init, tau_over_iters], dim=0)
 
         return torch.transpose(rates, 0, 1), torch.transpose(taus, 0, 1), F, W
+
+    # =========== Teacher execution with LRD window collection ===================
+    def execute_PGA_with_windows(self, H, R, Pt, n_iter_outer, n_iter_inner, L, le):
+        """Run teacher PGA and collect (F, W) iterates for the early and late windows.
+
+        Early window: teacher iters [le, le+L-1].
+        Late window : teacher iters [I-L, I-1].
+        Returns rates, taus, F, W, FW_early, FW_late.
+        """
+        rate_init, tau_init, F, W = initialize(H, R, Pt, initial_normalization)
+        rate_over_iters = torch.zeros(n_iter_outer, len(H[0]), device=H.device)
+        tau_over_iters = torch.zeros(n_iter_outer, len(H[0]), device=H.device)
+
+        FW_early, FW_late = [], []
+
+        for ii in range(n_iter_outer):
+            F = checkpoint(
+                analog_block_pga,
+                F, W, H, R, self.step_size, ii, Pt, n_iter_inner, use_reentrant=False
+            )
+            F = project_unit_modulus(F)
+
+            W_new = W.clone().detach()
+            grad_W_k_com = get_grad_W_com(H, F, W)
+            grad_W_k_rad = get_grad_W_rad(F, W, R)
+            for k in range(K):
+                delta_W_com = self.step_size[0][ii][k + 1] * grad_W_k_com[k]
+                delta_W_rad = self.step_size[0][ii][k + 1] * grad_W_k_rad[k]
+                W_new[k] = W[k].clone().detach() + delta_W_com * WEIGHT_W_COM - delta_W_rad * WEIGHT_W_RAD
+            F, W = normalize(F, W_new, H, Pt)
+
+            if le <= ii < le + L:
+                FW_early.append((F.clone(), W.detach().clone()))
+            if ii >= n_iter_outer - L:
+                FW_late.append((F.clone(), W.detach().clone()))
+
+            rate_over_iters[ii] = get_sum_rate(H, F, W, Pt)
+            tau_over_iters[ii] = get_beam_error(H, F, W, R, Pt)
+
+        rates = torch.cat([rate_init, rate_over_iters], dim=0)
+        taus = torch.cat([tau_init, tau_over_iters], dim=0)
+        return (torch.transpose(rates, 0, 1), torch.transpose(taus, 0, 1),
+                F, W, FW_early, FW_late)
 
 
 

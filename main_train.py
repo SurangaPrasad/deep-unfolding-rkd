@@ -12,63 +12,137 @@ H_train, H_test0 = get_data_tensor(data_source)
 H_test = H_test0[:, :test_size, :, :]
 torch.manual_seed(3407)
 
+# =============================================================
+#  Teacher: PGA_Unfold_J20 (J=20, I=120)
+#  Student: PGA_Unfold_J10 (J=10, I=60)  -- 4x cheaper
+# =============================================================
+I_T = n_iter_outer          # teacher outer layers (120)
+J_T = n_iter_inner_J20      # teacher inner layers (20)
+I_S = I_student             # student outer layers (60)
+J_S = n_iter_inner_J10      # student inner layers (10)
 
-def run_UPGA(step_size_UPGA, n_inner, run_id):
-    """Train the unfolded PGA (UPGA) model with balanced per-SNR sampling."""
-    model = PGA_Unfold_J10 if n_inner == n_iter_inner_J10 else PGA_Unfold_J20
-    model_UPGA = model(step_size_UPGA).to(device)
-    optimizer = torch.optim.Adam(model_UPGA.parameters(), lr=learning_rate)
+# LRD hyperparameters (paper Section IV)
+L = 15          # window length
+le = 20         # teacher early-window start
+lambda_d = 25.0
+lambda_a = 50.0
+lambda_late = 0.8
+lambda_log = 0.0001
 
+
+def train_teacher():
+    """Train the teacher model (J=20, I=120) with task loss only."""
+    print('Training teacher (J=20, I=120)...')
+    model = PGA_Unfold_J20(step_size_UPGA_J20).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     epoch_losses = []
 
     for i_epoch in range(n_epoch):
         batch_losses = []
         H_shuffled = torch.transpose(H_train, 0, 1)[np.random.permutation(len(H_train[0]))]
-
         for i_batch in range(0, len(H_train[0]), batch_size):
             H = torch.transpose(H_shuffled[i_batch:i_batch + batch_size], 0, 1).to(device)
             cur_bs = H.shape[1]
-            # balanced per-SNR sampling
             snr_dB_train = np.random.permutation(
                 np.tile(snr_dB_list, (batch_size // len(snr_dB_list)) + 1)
             )[:cur_bs]
             snr_train = torch.tensor(10 ** (snr_dB_train / 10), dtype=torch.float32, device=device)
-
             Rtrain, _, _, _ = get_radar_data(snr_dB_train, H)
             Rtrain = Rtrain.to(device)
 
-            _, _, F, W = model_UPGA.execute_PGA(H, Rtrain, snr_train, n_iter_outer, n_inner)
+            _, _, F, W = model.execute_PGA(H, Rtrain, snr_train, n_iter_outer, n_iter_inner_J20)
             loss = get_sum_loss(F, W, H, Rtrain, snr_train, cur_bs)
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-
             batch_losses.append(loss.item())
-            print(f"Epoch [{i_epoch+1}/{n_epoch}], Batch [{i_batch//batch_size + 1}/{len(H_train[0])//batch_size}], Loss: {loss.item():.4f}")
 
-        avg_loss = sum(batch_losses) / len(batch_losses)
-        epoch_losses.append(avg_loss)
-        print(f"Epoch [{i_epoch+1}/{n_epoch}], Average Loss: {avg_loss:.4f}")
+        avg = sum(batch_losses) / len(batch_losses)
+        epoch_losses.append(avg)
+        print(f"Teacher Epoch [{i_epoch+1}/{n_epoch}], Avg Loss: {avg:.4f}")
 
-    torch.save(model_UPGA.state_dict(), directory_model + f'UPGA_J{n_inner}_{run_id}.pth')
-
-    # Plot and save loss over epochs
-    plt.figure(figsize=(8, 5))
-    plt.plot(range(1, len(epoch_losses) + 1), epoch_losses, marker='o')
-    plt.xlabel('Epoch')
-    plt.ylabel('Average Loss')
-    plt.title(f'Training Loss over Epochs (J={n_inner})')
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(directory_model + f'UPGA_J{n_inner}_{run_id}_loss.png', dpi=300)
-    plt.show()
+    torch.save(model.state_dict(), model_file_name_teacher)
+    return model
 
 
-# ============================================================= proposed unfolding PGA =================================
+def tgi_init_student(teacher_model):
+    """Teacher-Guided Initialization: compress teacher step sizes to student."""
+    print('Applying TGI: compressing teacher step sizes to student...')
+    teacher_step = teacher_model.step_size.detach()  # [J_T, I_T, K+1]
+    student_step = tgi_compress_step_sizes(teacher_step, J_S, I_S, K + 1)
+    return student_step
+
+
+def train_student_lrd(teacher_model, use_tgi=True, use_lrd=True):
+    """Train the student (J=10, I=60) with TGI and/or LRD."""
+    print(f'Training student (J=10, I=60) | TGI={use_tgi}, LRD={use_lrd}...')
+
+    if use_tgi:
+        student_step = tgi_init_student(teacher_model)
+    else:
+        student_step = torch.full([J_S, I_S, K + 1], step_size_fixed, device=device, requires_grad=True)
+
+    model = PGA_Unfold_J10(student_step).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    epoch_losses = []
+
+    teacher_model.eval()
+
+    for i_epoch in range(n_epoch):
+        batch_losses = []
+        H_shuffled = torch.transpose(H_train, 0, 1)[np.random.permutation(len(H_train[0]))]
+        for i_batch in range(0, len(H_train[0]), batch_size):
+            H = torch.transpose(H_shuffled[i_batch:i_batch + batch_size], 0, 1).to(device)
+            cur_bs = H.shape[1]
+            snr_dB_train = np.random.permutation(
+                np.tile(snr_dB_list, (batch_size // len(snr_dB_list)) + 1)
+            )[:cur_bs]
+            snr_train = torch.tensor(10 ** (snr_dB_train / 10), dtype=torch.float32, device=device)
+            Rtrain, _, _, _ = get_radar_data(snr_dB_train, H)
+            Rtrain = Rtrain.to(device)
+
+            # ---- Teacher forward (no grad) ----
+            with torch.no_grad():
+                _, _, F_t, W_t, FW_t_early, FW_t_late = teacher_model.execute_PGA_with_windows(
+                    H, Rtrain, snr_train, n_iter_outer, J_T, L, le)
+                J_teacher_final = get_sum_loss(F_t, W_t, H, Rtrain, snr_train, cur_bs)
+
+            # ---- Student forward ----
+            _, _, F_s, W_s, FW_s_early, FW_s_late = model.execute_PGA_with_windows(
+                H, Rtrain, snr_train, I_S, J_S, L)
+
+            # ---- Losses ----
+            L_task = get_sum_loss(F_s, W_s, H, Rtrain, snr_train, cur_bs)
+
+            total = L_task
+            if use_lrd:
+                L_early = lrd_window_loss(FW_t_early, FW_s_early, lambda_d, lambda_a)
+                L_late = lrd_window_loss(FW_t_late, FW_s_late, lambda_d, lambda_a)
+                total = total + L_early + lambda_late * L_late
+
+            optimizer.zero_grad()
+            total.backward()
+            optimizer.step()
+            batch_losses.append(total.item())
+
+        avg = sum(batch_losses) / len(batch_losses)
+        epoch_losses.append(avg)
+        print(f"Student Epoch [{i_epoch+1}/{n_epoch}], Avg Loss: {avg:.4f}")
+
+    tag = f"TGI{int(use_tgi)}_LRD{int(use_lrd)}"
+    torch.save(model.state_dict(), directory_model + f'UPGA_J10_student_{tag}.pth')
+    return model
+
+
+# =============================================================
+#  Run the pipeline
+# =============================================================
 if run_UPGA_J20 == 1:
-    run_UPGA(step_size_UPGA_J20, n_iter_inner_J20, '320')
+    teacher = train_teacher()
+else:
+    teacher = PGA_Unfold_J20(step_size_UPGA_J20).to(device)
+    teacher.load_state_dict(torch.load(model_file_name_UPGA_J20, map_location=device))
 
-# ============================================================= proposed unfolding PGA =================================
 if run_UPGA_J10 == 1:
-    run_UPGA(step_size_UPGA_J10, n_iter_inner_J10, '320')
+    train_student_lrd(teacher, use_tgi=True, use_lrd=True)

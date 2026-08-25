@@ -604,6 +604,59 @@ def rkd_angle_loss(teacher, student):
     return torch.nn.functional.smooth_l1_loss(s_cos, t_cos)
 
 
+# =================================== Layer-wise Relational Distillation (LRD) ===========================
+def _vecR(X):
+    """Vectorize a complex matrix X into a real vector by stacking real/imag parts."""
+    return torch.cat([X.real.reshape(X.shape[0], -1), X.imag.reshape(X.shape[0], -1)], dim=1)
+
+
+def _huber_loss(x, y):
+    """Huber loss between two tensors (smooth L1)."""
+    return torch.nn.functional.smooth_l1_loss(x, y)
+
+
+def lrd_distance_loss(teacher_phi, student_phi):
+    """Distance-based relational potential loss (Eq. 12).
+
+    teacher_phi, student_phi: (B, D) real-valued effective beamformer embeddings.
+    """
+    with torch.no_grad():
+        t_dist = torch.cdist(teacher_phi, teacher_phi, p=2)
+        mu_d = t_dist.mean().clamp(min=1e-12)
+        t_pot = t_dist / mu_d
+    s_dist = torch.cdist(student_phi, student_phi, p=2)
+    s_pot = s_dist / s_dist.mean().clamp(min=1e-12)
+    return _huber_loss(s_pot, t_pot)
+
+
+def lrd_angle_loss(teacher_phi, student_phi):
+    """Angle-based relational potential loss (Eq. 13)."""
+    with torch.no_grad():
+        t_e = teacher_phi.unsqueeze(0) - teacher_phi.unsqueeze(1)
+        t_e = torch.nn.functional.normalize(t_e, p=2, dim=-1)
+        t_cos = torch.bmm(t_e, t_e.permute(0, 2, 1))
+    s_e = student_phi.unsqueeze(0) - student_phi.unsqueeze(1)
+    s_e = torch.nn.functional.normalize(s_e, p=2, dim=-1)
+    s_cos = torch.bmm(s_e, s_e.permute(0, 2, 1))
+    return _huber_loss(s_cos, t_cos)
+
+
+def lrd_window_loss(teacher_FW, student_FW, lambda_d=25.0, lambda_a=50.0):
+    """Layer-wise relational distillation loss over a window of outer layers.
+
+    teacher_FW, student_FW: lists of (F, W) tuples, one per outer iteration in the window.
+    Each F is (K, B, Nt, Nrf), W is (K, B, Nrf, M). The effective beamformer
+    phi = vecR(F @ W) is (B, 2*Nt*M).
+    """
+    total = 0.0
+    for (F_t, W_t), (F_s, W_s) in zip(teacher_FW, student_FW):
+        phi_t = _vecR((F_t @ W_t).reshape(F_t.shape[1], -1))
+        phi_s = _vecR((F_s @ W_s).reshape(F_s.shape[1], -1))
+        total = total + lambda_d * lrd_distance_loss(phi_t, phi_s) \
+                      + lambda_a * lrd_angle_loss(phi_t, phi_s)
+    return total / max(len(teacher_FW), 1)
+
+
 def _train_with_micro_batches(model, optimizer, H, R, Pt, n_iter_outer, scaler, n_iter_inner=None):
     """Single training step with AMP GradScaler support.
     Computes the combined communication + radar loss and updates model parameters."""
