@@ -25,7 +25,7 @@ def run_UPGA(step_size_UPGA, n_inner, run_id):
         batch_losses = []
         H_shuffled = torch.transpose(H_train, 0, 1)[np.random.permutation(len(H_train[0]))]
 
-        for i_batch in range(0, len(H_train), batch_size):
+        for i_batch in range(0, len(H_train[0]), batch_size):
             H = torch.transpose(H_shuffled[i_batch:i_batch + batch_size], 0, 1).to(device)
             cur_bs = H.shape[1]
             # balanced per-SNR sampling
