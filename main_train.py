@@ -63,7 +63,7 @@ def train_teacher():
         print(f"Teacher Epoch [{i_epoch+1}/{n_epoch}], Avg Loss: {avg:.4f}")
 
     torch.save(model.state_dict(), model_file_name_teacher)
-    return model
+    return model, epoch_losses
 
 
 def tgi_init_student(teacher_model):
@@ -132,17 +132,53 @@ def train_student_lrd(teacher_model, use_tgi=True, use_lrd=True):
 
     tag = f"TGI{int(use_tgi)}_LRD{int(use_lrd)}"
     torch.save(model.state_dict(), directory_model + f'UPGA_J10_student_{tag}.pth')
-    return model
+    return model, epoch_losses
+
+
+def plot_training_losses(teacher_losses, student_losses):
+    """Plot the training loss curves for teacher and student."""
+    epochs = np.arange(1, len(teacher_losses) + 1)
+    plt.figure(figsize=(7, 5))
+    plt.plot(epochs, teacher_losses, '-o', color='red', linewidth=2,
+             markersize=4, label='Teacher (UPGA, J=20, I=120)')
+    if student_losses is not None:
+        plt.plot(epochs, student_losses, '--s', color='blue', linewidth=2,
+                 markersize=4, label='Student (UPGA, J=10, I=60) + TGI + LRD')
+    plt.xlabel('Epoch')
+    plt.ylabel('Average Loss')
+    plt.title('Training Loss')
+    plt.grid()
+    plt.legend(loc='upper right')
+    plt.savefig(directory_result + f'training_loss_{system_config}.png', dpi=200)
+    plt.savefig(directory_result + f'training_loss_{system_config}.eps')
+    plt.close()
+    print(f"Saved training-loss plot to {directory_result}training_loss_{system_config}.png")
 
 
 # =============================================================
-#  Run the pipeline
+#  Run the training pipeline
 # =============================================================
-if run_UPGA_J20 == 1:
-    teacher = train_teacher()
-else:
-    teacher = PGA_Unfold_J20(step_size_UPGA_J20).to(device)
-    teacher.load_state_dict(torch.load(model_file_name_UPGA_J20, map_location=device))
+def run_training(use_tgi=True, use_lrd=True):
+    """Train the teacher (if enabled) then the student with TGI/LRD,
+    and plot the training-loss curves."""
+    teacher_losses = None
+    student_losses = None
 
-if run_UPGA_J10 == 1:
-    train_student_lrd(teacher, use_tgi=True, use_lrd=True)
+    # ---- Stage 1: Teacher ----
+    if run_UPGA_J20 == 1:
+        teacher, teacher_losses = train_teacher()
+    else:
+        teacher = PGA_Unfold_J20(step_size_UPGA_J20).to(device)
+        teacher.load_state_dict(torch.load(model_file_name_UPGA_J20, map_location=device))
+
+    # ---- Stage 2: Student ----
+    if run_UPGA_J10 == 1:
+        student, student_losses = train_student_lrd(teacher, use_tgi=use_tgi, use_lrd=use_lrd)
+
+    # ---- Plot training curves ----
+    plot_training_losses(teacher_losses, student_losses)
+    return teacher if run_UPGA_J10 != 1 else (teacher, student)
+
+
+if __name__ == '__main__':
+    run_training(use_tgi=True, use_lrd=True)
