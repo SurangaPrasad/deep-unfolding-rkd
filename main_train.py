@@ -108,9 +108,9 @@ if run_UPGA_J20 == 1:
             H = torch.transpose(H_shuffeld[i_batch:i_batch + batch_size], 0, 1 ).to(device)
 
             B = batch_size
-
-            snr_dB_train = np.random.choice(snr_dB_list)
-            snr_train = 10 ** (snr_dB_train / 10)
+            cur_bs = H.shape[1]
+            snr_dB_train = np.random.permutation(np.tile(snr_dB_list, batch_size // len(snr_dB_list)))[:cur_bs]  # balanced per-SNR
+            snr_train = torch.tensor(10 ** (snr_dB_train / 10),dtype=torch.float32, device=device)
 
             Rtrain, _, _, _ = get_radar_data(snr_dB_train, H)
             Rtrain = Rtrain.to(device)
