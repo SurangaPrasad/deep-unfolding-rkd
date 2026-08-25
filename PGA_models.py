@@ -954,7 +954,11 @@ def get_grad_F_rad(F, W, R):
         grad_F_K = 2 * (F @ W @ W_H @ F_H - R) @ F @ W @ W_H / torch.linalg.matrix_norm(R[:, 0, :, :], ord='fro') ** 2
     else:
         grad_F_K = 2 * (F @ W @ W_H @ F_H - R) @ F @ W @ W_H
-    grad_F_sum = sum(grad_F_K)
+    # Average over the K frequency dimension but KEEP that dim so the gradient
+    # matches F's 4D shape (K, B, Nt, Nrf).  Using the Python builtin sum()
+    # here collapses K -> (B, ...), which corrupts F via broadcasting when the
+    # per-sample batch already spans the batch axis.
+    grad_F_sum = torch.sum(grad_F_K, dim=0, keepdim=True)
     grad_F = grad_F_sum / K
     return grad_F
 
