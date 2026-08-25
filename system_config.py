@@ -61,7 +61,7 @@ system_info = str(Nt) + " Tx antennas, " + str(M) + " users, " + str(Nrf) + " RF
 print(system_info)
 
 # ////////////////////////////////////////////// MODEL PARAMS //////////////////////////////////////////////
-train_size = 320 # size of training set
+train_size = 112 * 4 # size of training set
 test_size = 100      # size of testing set
 batch_size = len(snr_dB_list) * 4
 n_epoch = 30 # number of training epochs
