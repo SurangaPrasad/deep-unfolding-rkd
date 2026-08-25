@@ -19,8 +19,8 @@ if run_UPGA_J20 == 1:
     model_UPGA_J20 = PGA_Unfold_J20(step_size_UPGA_J20)
     model_UPGA_J20.load_state_dict(torch.load(model_file_name_UPGA_J20))
 if run_UPGA_J10 == 1:
-    model_UPGA_J10 = PGA_Unfold_J10(step_size_UPGA_J10)
-    model_UPGA_J10.load_state_dict(torch.load(model_file_name_UPGA_J10))
+    model_UPGA_J10 = PGA_Unfold_J10(step_size_student)  # student (J=10, I=60) from TGI+LRD
+    model_UPGA_J10.load_state_dict(torch.load(model_file_name_student, map_location=device))
 if run_UPGA_J10_PC == 1:
     model_UPGA_J10_PC = PGA_Unfold_J10_PC(step_size_UPGA_J10_PC)
     model_UPGA_J10_PC.load_state_dict(torch.load(model_file_name_UPGA_J10_PC))
@@ -61,7 +61,7 @@ for ss in range(len(snr_dB_list)):
     if run_UPGA_J1 == 1:
         rate_UPGA_J1[ss], _, MSE_UPGA_J1[ss] = execute_UPGA_J1(model_UPGA_J1, H_test, R, snr_ss)
     if run_UPGA_J10 == 1:
-        rate_UPGA_J10[ss], _, MSE_UPGA_J10[ss] = execute_UPGA_J10(model_UPGA_J10, H_test, R, snr_ss)
+        rate_UPGA_J10[ss], _, MSE_UPGA_J10[ss] = execute_student(model_UPGA_J10, H_test, R, snr_ss)
     if run_UPGA_J20 == 1:
         rate_UPGA_J20[ss], _, MSE_UPGA_J20[ss] = execute_UPGA_J20(model_UPGA_J20, H_test, R, snr_ss)
     if run_UPGA_J10_PC == 1:

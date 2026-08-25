@@ -136,13 +136,23 @@ def train_student_lrd(teacher_model, use_tgi=True, use_lrd=True):
 
 
 def plot_training_losses(teacher_losses, student_losses):
-    """Plot the training loss curves for teacher and student."""
-    epochs = np.arange(1, len(teacher_losses) + 1)
+    """Plot the training loss curves for teacher and student.
+
+    Either curve may be None (e.g. when the teacher is loaded from a checkpoint
+    instead of retrained, so no teacher loss history exists).
+    """
+    if teacher_losses is None and student_losses is None:
+        print('No training-loss history to plot (both teacher and student were loaded).')
+        return
+
     plt.figure(figsize=(7, 5))
-    plt.plot(epochs, teacher_losses, '-o', color='red', linewidth=2,
-             markersize=4, label='Teacher (UPGA, J=20, I=120)')
+    if teacher_losses is not None:
+        epochs_t = np.arange(1, len(teacher_losses) + 1)
+        plt.plot(epochs_t, teacher_losses, '-o', color='red', linewidth=2,
+                 markersize=4, label='Teacher (UPGA, J=20, I=120)')
     if student_losses is not None:
-        plt.plot(epochs, student_losses, '--s', color='blue', linewidth=2,
+        epochs_s = np.arange(1, len(student_losses) + 1)
+        plt.plot(epochs_s, student_losses, '--s', color='blue', linewidth=2,
                  markersize=4, label='Student (UPGA, J=10, I=60) + TGI + LRD')
     plt.xlabel('Epoch')
     plt.ylabel('Average Loss')

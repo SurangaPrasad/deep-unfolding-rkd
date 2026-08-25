@@ -50,15 +50,15 @@ if run_program == 1:
 
     # ====================================================== Proposed Unfolded PGA light ====================================
     if run_UPGA_J10 == 1:
-        print('Running unfolded PGA with J = 10...')
+        print('Running unfolded PGA with J = 10 (student, I = 60)...')
         # Create new model and load states
-        model_UPGA_J10 = PGA_Unfold_J10(step_size_UPGA_J10).to(device)
-        model_UPGA_J10.load_state_dict(torch.load(model_file_name_UPGA_J10, map_location=device))
+        model_UPGA_J10 = PGA_Unfold_J10(step_size_student).to(device)
+        model_UPGA_J10.load_state_dict(torch.load(model_file_name_student, map_location=device))
 
         with torch.no_grad():
             sum_rate_UPGA_J10, tau_UPGA_J10, F_UPGA_J10, W_UPGA_J10 = model_UPGA_J10.execute_PGA(H_test, R,
                                                                                                  snr,
-                                                                                                 n_iter_outer,
+                                                                                                 I_student,
                                                                                                  n_iter_inner_J10)
         rate_iter_UPGA_J10 = torch.mean(sum_rate_UPGA_J10, dim=0)
         tau_iter_UPGA_J10 = torch.mean(tau_UPGA_J10, dim=0)
@@ -111,7 +111,7 @@ if plot_figure == 1:
     benchmark = 1
     iter_number_conv_PGA = np.array(list(range(n_iter_outer + 1)))
     iter_number_UPGA_J1 = np.array(list(range(n_iter_outer + 1)))
-    iter_number_UPGA_J10 = np.array(list(range(n_iter_outer + 1)))
+    iter_number_UPGA_J10 = np.array(list(range(I_student + 1)))  # student runs I=60 outer layers
     iter_number_UPGA_J20 = np.array(list(range(n_iter_outer + 1)))
 
     # //////////////////////////////// LOADING RESULTS //////////////////////////////////////////
@@ -137,8 +137,7 @@ if plot_figure == 1:
     #                               PLOT FIGURES
     # //////////////////////////////////////////////////////////////////////////////////////////
     print('Plotting figures...')
-    system_params = r'$N=' + str(Nt) + ', M=' + str(M) + ', N_{\mathrm{RF}}=' + str(Nrf) + ', \mathrm{SNR}=' + str(
-        snr_dB) + ' \mathrm{dB}' + ', \omega=' + str(OMEGA) + '$'
+    system_params = rf'$N={Nt}, M={M}, N_{{\mathrm{{RF}}}}={Nrf}, \mathrm{{SNR}}={snr_dB} \mathrm{{dB}}, \omega={OMEGA}$'
 
     # load benchmark results
     if benchmark == 1:
