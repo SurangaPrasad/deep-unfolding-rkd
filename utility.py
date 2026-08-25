@@ -459,38 +459,77 @@ def get_data_tensor(data_source):
 
 # =================================== load radar data generated in Matlab ==================================================
 def get_radar_data(snr_dB, H):
-    # radar info does not depend on channel
+    """Load pre-computed radar covariance matrix R and array-steering vectors.
+
+    snr_dB can be:
+      - a scalar (float / int / 0-d array) — same R replicated over the batch (original behaviour)
+      - a 1-D array of shape (B,)          — per-sample R assembled from the lookup table
+
+    Returns
+    -------
+    R          : torch tensor  (K, B, Nt, Nt)
+    at         : torch tensor  (K, B, Nt, n_angles)
+    theta      : np.ndarray    angle grid
+    ideal_beam : np.ndarray    ideal beampattern
+    """
     radar_data_file_name = directory_data + 'radar_data.mat'
     radar_data = scipy.io.loadmat(radar_data_file_name)
-    # R0_2D = radar_data['Cbar']
-    idx_snr = np.where(snr_dB_list == snr_dB)
+    R0_4D = radar_data['J']          # shape: (Nt, Nt, K_freq, n_snr)  or (Nt, Nt, n_snr) when K==1
+
+    at_2D = radar_data['a']
+    theta = radar_data['theta']
+    ideal_beam = radar_data['Pd_theta']
+
+    B = len(H[0])
+
+    # ------------------------------------------------------------------ #
+    # Determine whether snr_dB is a scalar or per-sample array
+    # ------------------------------------------------------------------ #
+    snr_dB_arr = np.atleast_1d(np.asarray(snr_dB, dtype=float)).ravel()
+    per_sample = snr_dB_arr.size > 1   # True  → per-sample path
+                                        # False → replicate-scalar path
 
     if K == 1:
-        R0_4D = radar_data['J']
-        R0_2D = np.squeeze(R0_4D[:, :, 0, idx_snr])
-        R_array = np.tile(R0_2D, [1, len(H[0]), 1, 1])
+        if per_sample:
+            # Build R per sample: shape (1, B, Nt, Nt)
+            R_list = []
+            for s in snr_dB_arr:
+                idx = np.where(snr_dB_list == s)[0]
+                R_s = np.squeeze(R0_4D[:, :, 0, idx])   # (Nt, Nt)
+                R_list.append(R_s[None, :, :])           # (1, Nt, Nt)
+            R_stack = np.stack(R_list, axis=0)           # (B, Nt, Nt)
+            R_array = R_stack[None, :, :, :]             # (1, B, Nt, Nt)
+        else:
+            idx_snr = np.where(snr_dB_list == snr_dB_arr[0])
+            R0_2D = np.squeeze(R0_4D[:, :, 0, idx_snr])
+            R_array = np.tile(R0_2D, [1, B, 1, 1])
 
-        at_2D = radar_data['a']
-        at_array_true = np.tile(at_2D, (1, train_size, 1, 1))
         at0 = np.expand_dims(at_2D, axis=0)
-        at_array1 = np.tile(at0, (train_size, 1, 1, 1))
-        at_array = np.transpose(at_array1, (1, 0, 2, 3))  # test
+        at_array1 = np.tile(at0, (B, 1, 1, 1))
+        at_array = np.transpose(at_array1, (1, 0, 2, 3))
     else:
-        R0_4D = radar_data['J']
-        R0_2D = np.squeeze(R0_4D[:, :, :, idx_snr])
-        R_array0 = np.transpose(R0_2D, (2, 0, 1))
-        R_array1 = np.tile(R_array0, [len(H[0]), 1, 1, 1])
-        R_array = np.transpose(R_array1, (1, 0, 2, 3))
+        if per_sample:
+            R_list = []
+            for s in snr_dB_arr:
+                idx = np.where(snr_dB_list == s)[0]
+                R_s = np.squeeze(R0_4D[:, :, :, idx])   # (Nt, Nt, K)
+                R_s_k = np.transpose(R_s, (2, 0, 1))    # (K, Nt, Nt)
+                R_list.append(R_s_k[:, None, :, :])     # (K, 1, Nt, Nt)
+            R_stack = np.concatenate(R_list, axis=1)    # (K, B, Nt, Nt)
+            R_array = R_stack
+        else:
+            idx_snr = np.where(snr_dB_list == snr_dB_arr[0])
+            R0_2D = np.squeeze(R0_4D[:, :, :, idx_snr])
+            R_array0 = np.transpose(R0_2D, (2, 0, 1))
+            R_array1 = np.tile(R_array0, [B, 1, 1, 1])
+            R_array = np.transpose(R_array1, (1, 0, 2, 3))
 
-        at_2D = radar_data['a']
         at0 = np.transpose(at_2D, (2, 0, 1))
-        at_array1 = np.tile(at0, (train_size, 1, 1, 1))
+        at_array1 = np.tile(at0, (B, 1, 1, 1))
         at_array = np.transpose(at_array1, (1, 0, 2, 3))
 
     R = torch.from_numpy(R_array)
     at = torch.from_numpy(at_array)
-    theta = radar_data['theta']
-    ideal_beam = radar_data['Pd_theta']
 
     return R, at, theta, ideal_beam[0, :]
 

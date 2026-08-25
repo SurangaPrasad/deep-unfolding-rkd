@@ -104,7 +104,7 @@ if run_UPGA_J20 == 1:
         start_time = time.time() 
         H_shuffeld = torch.transpose(H_train, 0, 1)[np.random.permutation(len(H_train[0]))]
 
-        for i_batch in range(0, len(H_train[0]), batch_size):
+        for i_batch in range(0, len(H_train), batch_size):
             H = torch.transpose(H_shuffeld[i_batch:i_batch + batch_size], 0, 1 ).to(device)
 
             B = batch_size
