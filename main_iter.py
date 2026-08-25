@@ -30,7 +30,8 @@ if run_program == 1:
     if run_conv_PGA == 1:
         print('Running conventional PGA...')
         model_conv_PGA = PGA_Conv(step_size_conv_PGA).to(device)
-        rate_conv, tau_conv, F_conv, W_conv = model_conv_PGA.execute_PGA(H_test, R, snr, n_iter_outer)
+        with torch.no_grad():
+            rate_conv, tau_conv, F_conv, W_conv = model_conv_PGA.execute_PGA(H_test, R, snr, n_iter_outer)
         rate_iter_conv = torch.mean(rate_conv, dim=0)
         tau_iter_conv = torch.mean(tau_conv, dim=0)
 
@@ -42,7 +43,8 @@ if run_program == 1:
         model_UPGA_J1.load_state_dict(torch.load(model_file_name_UPGA_J1, map_location=device))
 
         # executing unfolded PGA on the test set
-        sum_rate_UPGA_J1, tau_UPGA_J1, F_UPGA_J1, W_UPGA_J1 = model_UPGA_J1.execute_PGA(H_test, R, snr, n_iter_outer)
+        with torch.no_grad():
+            sum_rate_UPGA_J1, tau_UPGA_J1, F_UPGA_J1, W_UPGA_J1 = model_UPGA_J1.execute_PGA(H_test, R, snr, n_iter_outer)
         rate_iter_UPGA_J1 = torch.mean(sum_rate_UPGA_J1, dim=0)
         tau_iter_UPGA_J1 = torch.mean(tau_UPGA_J1, dim=0)
 
@@ -53,10 +55,11 @@ if run_program == 1:
         model_UPGA_J10 = PGA_Unfold_J10(step_size_UPGA_J10).to(device)
         model_UPGA_J10.load_state_dict(torch.load(model_file_name_UPGA_J10, map_location=device))
 
-        sum_rate_UPGA_J10, tau_UPGA_J10, F_UPGA_J10, W_UPGA_J10 = model_UPGA_J10.execute_PGA(H_test, R,
-                                                                                             snr,
-                                                                                             n_iter_outer,
-                                                                                             n_iter_inner_J10)
+        with torch.no_grad():
+            sum_rate_UPGA_J10, tau_UPGA_J10, F_UPGA_J10, W_UPGA_J10 = model_UPGA_J10.execute_PGA(H_test, R,
+                                                                                                 snr,
+                                                                                                 n_iter_outer,
+                                                                                                 n_iter_inner_J10)
         rate_iter_UPGA_J10 = torch.mean(sum_rate_UPGA_J10, dim=0)
         tau_iter_UPGA_J10 = torch.mean(tau_UPGA_J10, dim=0)
 
@@ -67,8 +70,9 @@ if run_program == 1:
         model_UPGA_J20 = PGA_Unfold_J20(step_size_UPGA_J20).to(device)
         model_UPGA_J20.load_state_dict(torch.load(model_file_name_UPGA_J20, map_location=device))
 
-        sum_rate_UPGA_J20, tau_UPGA_J20, F_UPGA_J20, W_UPGA_J20 = model_UPGA_J20.execute_PGA(H_test, R, snr, n_iter_outer,
-                                                                                             n_iter_inner_J20)
+        with torch.no_grad():
+            sum_rate_UPGA_J20, tau_UPGA_J20, F_UPGA_J20, W_UPGA_J20 = model_UPGA_J20.execute_PGA(H_test, R, snr, n_iter_outer,
+                                                                                                 n_iter_inner_J20)
         rate_iter_UPGA_J20 = torch.mean(sum_rate_UPGA_J20, dim=0)
         tau_iter_UPGA_J20 = torch.mean(tau_UPGA_J20, dim=0)
 
