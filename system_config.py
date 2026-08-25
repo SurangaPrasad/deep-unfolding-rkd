@@ -12,13 +12,13 @@ COMPLEX_DTYPE = torch.complex64
 n_iter_inner_J5 = 5
 n_iter_inner_J3 = 3
 #/////////////////////////// CONSIONDER SCHEMES /////////////////////////////////////////////////////////
-run_conv_PGA = 11          # Conventional PGA without unfolding
-run_conv_PGA_J10 = 11    # Conventional PGA with setting J = 10
-run_UPGA_J1 = 11            # Unfolded PGA without any modification (J = 1)
-run_UPGA_J10 =11  # Unfolded PGA with setting J = 10
+run_conv_PGA = 0          # Conventional PGA without unfolding
+run_conv_PGA_J10 = 0    # Conventional PGA with setting J = 10
+run_UPGA_J1 = 0            # Unfolded PGA without any modification (J = 1)
+run_UPGA_J10 =0  # Unfolded PGA with setting J = 10
 run_UPGA_J20 = 1     # Unfolded PGA with setting J = 20
-run_RKD_Distillation=11
-run_J20_I60 =11
+run_RKD_Distillation=0
+run_J20_I60 =0
 run_conv_PGA_J10_PC = 0    # Conventional PGA with J = 10 and partial coupling (PC)
 run_UPGA_J10_PC = 0        # Unfolded PGA with J = 10 and partial coupling (PC)
 # ////////////////////////////////////////////// SYSTEM PARAMS //////////////////////////////////////////////
@@ -63,7 +63,7 @@ print(system_info)
 # ////////////////////////////////////////////// MODEL PARAMS //////////////////////////////////////////////
 train_size = 320 # size of training set
 test_size = 100      # size of testing set
-batch_size = 10 # batch size when training
+batch_size = len(snr_dB_list) * 4
 n_epoch = 30 # number of training epochs
 learning_rate = 0.001 # learning rate
 

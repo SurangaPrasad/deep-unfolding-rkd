@@ -104,14 +104,10 @@ if run_UPGA_J20 == 1:
         epoch_loss = 0.0
         num_batches = 0
         start_time = time.time() 
-        H_shuffeld = torch.transpose(H_train, 0, 1)[
-            np.random.permutation(len(H_train[0]))
-        ]
+        H_shuffeld = torch.transpose(H_train, 0, 1)[np.random.permutation(len(H_train[0]))]
 
         for i_batch in range(0, len(H_train[0]), batch_size):
-            H = torch.transpose(
-                H_shuffeld[i_batch:i_batch + batch_size], 0, 1
-            ).to(device)
+            H = torch.transpose(H_shuffeld[i_batch:i_batch + batch_size], 0, 1 ).to(device)
 
             B = batch_size
 
@@ -121,9 +117,7 @@ if run_UPGA_J20 == 1:
             Rtrain, _, _, _ = get_radar_data(snr_dB_train, H)
             Rtrain = Rtrain.to(device)
 
-            rate, _, F, W = model_UPGA_J20.execute_PGA(
-                H, Rtrain, snr_train, n_iter_outer, n_iter_inner_J20
-            )
+            rate, _, F, W = model_UPGA_J20.execute_PGA(H, Rtrain, snr_train, n_iter_outer, n_iter_inner_J20)
 
             loss = get_sum_loss(F, W, H, Rtrain, snr_train, B)
 
@@ -141,24 +135,25 @@ if run_UPGA_J20 == 1:
 
         print(f"Epoch {i_epoch:4d} | Time: {epoch_time:.2f} | Avg loss: {avg_epoch_loss:.4f} ")
 
-    torch.save(model_UPGA_J20.state_dict(), 'UPGA_J20_I40_w_0_30_prop.pth')
+    # Save trained model
+    torch.save(model_UPGA_J20.state_dict(), model_file_name_UPGA_J20)
 
     # test proposed model
-    #model_test = PGA_Unfold_J20(step_size_UPGA_J20).to(device)  # Move model to GPU
-    #model_test.load_state_dict(torch.load(model_file_name_UPGA_J20, map_location=device))  # Load to correct device
-    
-    #Rtest, at, theta, ideal_beam = get_radar_data(snr_dB, H_test)
+    model_test = PGA_Unfold_J20(step_size_UPGA_J20).to(device)  # Move model to GPU
+    model_test.load_state_dict(torch.load(model_file_name_UPGA_J20, map_location=device))  # Load to correct device
+
+    Rtest, at, theta, ideal_beam = get_radar_data(snr_dB, H_test)
     # Move radar data to GPU
-    #Rtest = Rtest.to(device)
-    #at = at.to(device)
-    #theta = torch.as_tensor(theta, device=device)
-    #ideal_beam = torch.as_tensor(ideal_beam, device=device)
-    
-    #rate_iter_UPGA_J20, beam_error_iter_UPGA_J20, F_UPGA_J20, W_UPGA_J20 = model_test.execute_PGA(H_test, Rtest, snr, n_iter_outer,
-                                                                                            # n_iter_inner_J20)
-    #rate_UPGA_J20 = torch.mean(rate_iter_UPGA_J20, dim=0)
-    #beam_error_UPGA_J20 = torch.mean(beam_error_iter_UPGA_J20, dim=0)
-    #iter_number_UPGA_J20 = torch.arange(n_iter_outer + 1, device=rate_UPGA_J20.device, dtype=rate_UPGA_J20.dtype)
+    Rtest = Rtest.to(device)
+    at = at.to(device)
+    theta = torch.as_tensor(theta, device=device)
+    ideal_beam = torch.as_tensor(ideal_beam, device=device)
+
+    rate_iter_UPGA_J20, beam_error_iter_UPGA_J20, F_UPGA_J20, W_UPGA_J20 = model_test.execute_PGA(H_test, Rtest, snr, n_iter_outer,
+                                                                                             n_iter_inner_J20)
+    rate_UPGA_J20 = torch.mean(rate_iter_UPGA_J20, dim=0)
+    beam_error_UPGA_J20 = torch.mean(beam_error_iter_UPGA_J20, dim=0)
+    iter_number_UPGA_J20 = torch.arange(n_iter_outer + 1, device=rate_UPGA_J20.device, dtype=rate_UPGA_J20.dtype)
 # ============================================================= proposed unfolding PGA =================================
 if run_UPGA_J10 == 7:
     print('training J10')
@@ -190,9 +185,7 @@ if run_UPGA_J10 == 7:
             Rtrain = Rtrain.to(device)
 
             with autocast(enabled=amp_enabled):
-                rate, _, F, W = model_UPGA_J10.execute_PGA(
-                    H, Rtrain, snr_train, n_iter_outer, n_iter_inner_J10
-                )
+                rate, _, F, W = model_UPGA_J10.execute_PGA(H, Rtrain, snr_train, n_iter_outer, n_iter_inner_J10 )
                 loss = get_sum_loss(F, W, H, Rtrain, snr_train, B)
 
             optimizer.zero_grad()
@@ -211,9 +204,7 @@ if run_UPGA_J10 == 7:
 
     # Test
     model_test = PGA_Unfold_J10(step_size_UPGA_J10).to(device)
-    model_test.load_state_dict(
-        torch.load(directory_model + 'UPGA_J10_320_new.pth', map_location=device)
-    )
+    model_test.load_state_dict(torch.load(directory_model + 'UPGA_J10_320_new.pth', map_location=device))
     model_test.eval()
 
     Rtest, at, theta, ideal_beam = get_radar_data(snr_dB, H_test)
