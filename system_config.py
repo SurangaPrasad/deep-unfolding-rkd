@@ -67,7 +67,7 @@ batch_size = len(snr_dB_list) * 4
 n_epoch = 30 # number of training epochs
 learning_rate = 0.001 # learning rate
 
-n_iter_outer = 40     # Number of outer iterations (I)
+n_iter_outer = 120     # Number of outer iterations (I)
 n_iter_inner_J5 = 5     # Number of inner iterations (J = 5)
 n_iter_inner_J3 = 3 
 n_iter_inner_J20 = 20   # Number of inner iterations (J = 20)

@@ -24,8 +24,6 @@ if torch.cuda.is_available():
     print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
 
 # ---- training and test the models ----
-run_UPGA_J10 =0
-n_iter_outer=40
 step_size_UPGA_J10 = torch.full([n_iter_inner_J10, n_iter_outer, K + 1], step_size_fixed, device=device, requires_grad=True)
 # Load training data
 H_train, H_test0 = get_data_tensor(data_source)
@@ -127,6 +125,7 @@ if run_UPGA_J20 == 1:
 
             epoch_loss += loss.item()
             num_batches += 1
+            print(f'Epoch {i_epoch}, Batch {i_batch}: Loss = {loss.item():.4f}')
 
         avg_epoch_loss = epoch_loss / max(num_batches, 1)
         train_losses.append(avg_epoch_loss)
