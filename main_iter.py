@@ -187,7 +187,7 @@ if plot_figure == 1:
         plt.plot(iter_number_UPGA_J20, objective_value, '-', markevery=5, color='red', linewidth=3, markersize=7, label=label_UPGA_J20)
     if run_UPGA_J10 == 1:
         objective_value = [rate_iter_UPGA_J10[i].item() - OMEGA * tau_iter_UPGA_J10[i].item() for i in range(len(rate_iter_UPGA_J10))]
-        plt.plot(iter_number_UPGA_J10, objective_value, ':*', markevery=5, color='red', linewidth=3, markersize=7, label=label_UPGA_J10)
+        plt.plot(iter_number_UPGA_J10, objective_value, ':*', markevery=5, color='blue', linewidth=3, markersize=7, label=label_UPGA_J10)
 
     # plt.title(system_params)
     plt.xlabel(r'Number of iterations/layers $(I)$', fontsize="14")

@@ -135,25 +135,39 @@ def train_student_lrd(teacher_model, use_tgi=True, use_lrd=True):
     return model, epoch_losses
 
 
-def plot_training_losses(teacher_losses, student_losses):
-    """Plot the training loss curves for teacher and student.
+def plot_training_losses(teacher_losses, student_losses_dict):
+    """Plot the training loss curves for the teacher and all 4 student variants.
 
-    Either curve may be None (e.g. when the teacher is loaded from a checkpoint
-    instead of retrained, so no teacher loss history exists).
+    teacher_losses: list of per-epoch losses, or None (e.g. when the teacher is
+                    loaded from a checkpoint instead of retrained).
+    student_losses_dict: dict mapping (use_tgi, use_lrd) -> list of per-epoch
+                         losses for each of the 4 student variants.
     """
-    if teacher_losses is None and student_losses is None:
-        print('No training-loss history to plot (both teacher and student were loaded).')
+    if teacher_losses is None and not student_losses_dict:
+        print('No training-loss history to plot (teacher and students were loaded).')
         return
 
-    plt.figure(figsize=(7, 5))
+    plt.figure(figsize=(8, 6))
     if teacher_losses is not None:
         epochs_t = np.arange(1, len(teacher_losses) + 1)
         plt.plot(epochs_t, teacher_losses, '-o', color='red', linewidth=2,
                  markersize=4, label='Teacher (UPGA, J=20, I=120)')
-    if student_losses is not None:
-        epochs_s = np.arange(1, len(student_losses) + 1)
-        plt.plot(epochs_s, student_losses, '--s', color='blue', linewidth=2,
-                 markersize=4, label='Student (UPGA, J=10, I=60) + TGI + LRD')
+
+    # Style for each of the 4 student variants
+    student_styles = {
+        (False, False): ('-',  'blue',   'Student (J=10, I=60)'),
+        (True,  False): ('--', 'green',  'Student + TGI'),
+        (False, True):  ('-.', 'orange', 'Student + LRD'),
+        (True,  True):  (':',  'purple', 'Student + TGI + LRD'),
+    }
+    for (use_tgi, use_lrd), losses in student_losses_dict.items():
+        if losses is None:
+            continue
+        linestyle, color, label = student_styles[(use_tgi, use_lrd)]
+        epochs_s = np.arange(1, len(losses) + 1)
+        plt.plot(epochs_s, losses, linestyle=linestyle, color=color, linewidth=2,
+                 markersize=4, label=label)
+
     plt.xlabel('Epoch')
     plt.ylabel('Average Loss')
     plt.title('Training Loss')
@@ -168,11 +182,11 @@ def plot_training_losses(teacher_losses, student_losses):
 # =============================================================
 #  Run the training pipeline
 # =============================================================
-def run_training(use_tgi=True, use_lrd=True):
-    """Train the teacher (if enabled) then the student with TGI/LRD,
-    and plot the training-loss curves."""
+def run_training():
+    """Train the teacher (if enabled) then all 4 student variants
+    (TGI/LRD on/off), and plot all training-loss curves in one diagram."""
     teacher_losses = None
-    student_losses = None
+    student_losses_dict = {}
 
     # ---- Stage 1: Teacher ----
     if run_UPGA_J20 == 1:
@@ -181,14 +195,17 @@ def run_training(use_tgi=True, use_lrd=True):
         teacher = PGA_Unfold_J20(step_size_UPGA_J20).to(device)
         teacher.load_state_dict(torch.load(model_file_name_UPGA_J20, map_location=device))
 
-    # ---- Stage 2: Student ----
+    # ---- Stage 2: All 4 student variants ----
     if run_UPGA_J10 == 1:
-        student, student_losses = train_student_lrd(teacher, use_tgi=use_tgi, use_lrd=use_lrd)
+        for use_tgi in [False, True]:
+            for use_lrd in [False, True]:
+                student, losses = train_student_lrd(teacher, use_tgi=use_tgi, use_lrd=use_lrd)
+                student_losses_dict[(use_tgi, use_lrd)] = losses
 
     # ---- Plot training curves ----
-    plot_training_losses(teacher_losses, student_losses)
-    return teacher if run_UPGA_J10 != 1 else (teacher, student)
+    plot_training_losses(teacher_losses, student_losses_dict)
+    return teacher, student_losses_dict
 
 
 if __name__ == '__main__':
-    run_training(use_tgi=True, use_lrd=True)
+    run_training()
